@@ -13,7 +13,7 @@ ctk.set_default_color_theme("blue")
 class AppControlViajes(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("AlexSolutions - Control de Viajes Pro")
+        self.title("AlxSolutions - Control de Viajes Pro")
         self.geometry("1150x850")
         
         # Archivos y Carpetas
@@ -53,12 +53,11 @@ class AppControlViajes(ctk.CTk):
         """Menú inicial: Liquidar, Editar o Nuevo"""
         if os.path.exists(self.archivo_pendientes):
             dialogo = ctk.CTkToplevel(self)
-            dialogo.title("Viaje Pendiente Detectado")
+            dialogo.title("Viaje Pendiente")
             dialogo.geometry("400x250")
             dialogo.grab_set()
             
             ctk.CTkLabel(dialogo, text="¿Qué deseas hacer con la ruta activa?", font=("Roboto", 16)).pack(pady=20)
-            
             btn_f = ctk.CTkFrame(dialogo, fg_color="transparent")
             btn_f.pack(pady=10)
 
@@ -106,9 +105,12 @@ class AppControlViajes(ctk.CTk):
         ctk.CTkLabel(form, text="Producto:").pack(pady=(20,0))
         self.var_prod = ctk.StringVar()
         self.var_prod.trace_add("write", self.detectar_cambio_producto)
+        
+        # Combo con soporte para rueda de mouse
         self.combo_prod = ctk.CTkComboBox(form, values=self.lista_nombres, width=280, variable=self.var_prod)
         self.combo_prod.pack(pady=10)
         self.combo_prod.bind("<KeyRelease>", self.filtrar_productos)
+        self.combo_prod.bind("<MouseWheel>", self._scroll_combo)
 
         ctk.CTkLabel(form, text="Precio:").pack()
         self.ent_pre = ctk.CTkEntry(form, width=280)
@@ -125,6 +127,15 @@ class AppControlViajes(ctk.CTk):
         self.scroll_view = ctk.CTkScrollableFrame(content, label_text="Resumen de Carga")
         self.scroll_view.pack(side="right", padx=20, pady=20, fill="both", expand=True)
         if self.carga_actual: self.renderizar_lista_salida()
+
+    def _scroll_combo(self, event):
+        """Permite navegar la lista con la rueda del mouse"""
+        opciones = self.combo_prod.cget("values")
+        if not opciones: return
+        idx = opciones.index(self.combo_prod.get()) if self.combo_prod.get() in opciones else 0
+        if event.delta > 0: nuevo = max(0, idx - 1)
+        else: nuevo = min(len(opciones) - 1, idx + 1)
+        self.combo_prod.set(opciones[nuevo])
 
     def agregar_item(self):
         p = self.combo_prod.get().upper().strip()
@@ -151,18 +162,35 @@ class AppControlViajes(ctk.CTk):
 
     def guardar_y_pdf(self):
         if not self.carga_actual: return
+        
+        # 1. ORDENAR LOS DATOS ALFABÉTICAMENTE
+        # Creamos una lista ordenada por el nombre del producto antes de generar el PDF
+        items_ordenados = sorted(self.carga_actual.values(), key=lambda x: x['Producto'])
+        
         with open(self.archivo_pendientes, "w", encoding="utf-8") as f:
-            json.dump(list(self.carga_actual.values()), f)
-        # Generación de PDF
-        pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, 'Inventario de Salida - AlexSolutions', ln=True, align='C')
-        pdf.ln(10); pdf.set_font("Arial", 'B', 12)
-        pdf.cell(100, 10, "Producto", 1); pdf.cell(40, 10, "Cant.", 1); pdf.cell(40, 10, "Precio", 1, ln=True)
-        pdf.set_font("Arial", '', 11)
-        for item in self.carga_actual.values():
-            pdf.cell(100, 10, item['Producto'][:40], 1); pdf.cell(40, 10, str(item['Cant_Inicial']), 1); pdf.cell(40, 10, f"{item['Precio_Unit']:,.0f}", 1, ln=True)
+            json.dump(items_ordenados, f)
+            
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, 'Inventario de Salida - AlxSolutions', ln=True, align='C')
+        pdf.ln(10)
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(100, 10, "Producto", 1)
+        pdf.cell(40, 10, "Cant.", 1)
+        pdf.cell(40, 10, "Precio", 1, ln=True)
+        pdf.set_font("Arial", "", 11)
+        
+        # 2. USAR LA LISTA ORDENADA PARA EL BUCLE
+        for item in items_ordenados:
+            pdf.cell(100, 10, item['Producto'][:40], 1)
+            pdf.cell(40, 10, str(item['Cant_Inicial']), 1)
+            pdf.cell(40, 10, f"{item['Precio_Unit']:,.0f}", 1, ln=True)
+            
         n_pdf = os.path.join(self.folder_reportes, f"Salida_{datetime.now().strftime('%H%M%S')}.pdf")
-        pdf.output(n_pdf); os.startfile(n_pdf); self.destroy()
+        pdf.output(n_pdf)
+        os.startfile(n_pdf)
+        self.destroy()
 
     def detectar_cambio_producto(self, *args):
         s = self.combo_prod.get().upper().strip()
@@ -180,11 +208,9 @@ class AppControlViajes(ctk.CTk):
         ctk.CTkLabel(self.main_frame, text="CUADRE FINAL DE CAJA", font=("Roboto", 24, "bold")).pack(pady=15)
         container = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         container.pack(fill="both", expand=True)
-
         self.list_f = ctk.CTkScrollableFrame(container, width=450, label_text="Productos en Ruta")
         self.list_f.pack(side="left", padx=20, pady=20, fill="both")
         self.act_lista_liq()
-
         self.liq_form = ctk.CTkFrame(container)
         self.liq_form.pack(side="right", padx=20, pady=20, fill="both", expand=True)
         ctk.CTkLabel(self.liq_form, text="Seleccione un producto...").pack(pady=100)
@@ -200,7 +226,7 @@ class AppControlViajes(ctk.CTk):
         for w in self.liq_form.winfo_children(): w.destroy()
         self.sel = n; d = self.carga_actual[n]
         ctk.CTkLabel(self.liq_form, text=n, font=("Roboto", 18, "bold"), text_color="#e5aa45").pack(pady=20)
-        ctk.CTkLabel(self.liq_form, text=f"ENTREGADO: {d['Cant_Inicial']} UNIDADES", font=("Roboto", 16, "bold")).pack(pady=10) #
+        ctk.CTkLabel(self.liq_form, text=f"ENTREGADO: {d['Cant_Inicial']} UNIDADES", font=("Roboto", 16, "bold")).pack(pady=10)
         self.ev = ctk.CTkEntry(self.liq_form, placeholder_text="Vendidos", width=200); self.ev.pack(pady=5)
         self.ef = ctk.CTkEntry(self.liq_form, placeholder_text="Físico devuelto", width=200); self.ef.pack(pady=5)
         self.ev.bind("<Return>", lambda e: self.ef.focus())
@@ -235,52 +261,22 @@ class AppControlViajes(ctk.CTk):
         ctk.CTkButton(self.main_frame, text="CERRAR DÍA Y GUARDAR HISTÓRICO", fg_color="#27ae60", command=self.finalizar).pack(pady=10)
 
     def finalizar(self):
-        """Guardado con dos pestañas y reporte gráfico"""
+        """Guardado seguro con pestañas"""
         try:
-            # Convertimos la carga actual a una lista para el DataFrame
-            lista_datos = list(self.carga_actual.values())
-            df_nuevo = pd.DataFrame(lista_datos)
-            
-            # Verificamos si hay datos antes de seguir
-            if df_nuevo.empty:
-                messagebox.showwarning("Atención", "No hay datos para guardar.")
-                return
-
-            # Cargar histórico si existe
+            df_nuevo = pd.DataFrame(list(self.carga_actual.values()))
             if os.path.exists(self.archivo_historico):
-                try:
-                    # Intentamos leer la pestaña de datos
-                    df_hist = pd.read_excel(self.archivo_historico, sheet_name='Datos_Ventas')
-                    df_final = pd.concat([df_hist, df_nuevo], ignore_index=True)
-                except Exception:
-                    # Si la pestaña no existe o el archivo está corrupto, empezamos de nuevo
-                    df_final = df_nuevo
-            else:
-                df_final = df_nuevo
-
-            # Generar el Top 10 para la pestaña de gráficos
-            resumen_top = df_final.groupby('Producto').agg({
-                'Vendidos': 'sum', 
-                'Venta_Total': 'sum'
-            }).sort_values(by='Vendidos', ascending=False).head(10)
-
-            # --- OPERACIÓN DE GUARDADO CRÍTICA ---
+                df_hist = pd.read_excel(self.archivo_historico, sheet_name='Datos_Ventas')
+                df_final = pd.concat([df_hist, df_nuevo], ignore_index=True)
+            else: df_final = df_nuevo
+            resumen_top = df_final.groupby('Producto').agg({'Vendidos': 'sum', 'Venta_Total': 'sum'}).sort_values(by='Vendidos', ascending=False).head(10)
             with pd.ExcelWriter(self.archivo_historico, engine='openpyxl') as writer:
                 df_final.to_excel(writer, sheet_name='Datos_Ventas', index=False)
                 resumen_top.to_excel(writer, sheet_name='Resumen_Grafico')
-            
-            # Si el guardado fue exitoso, borramos el JSON de la ruta activa
-            if os.path.exists(self.archivo_pendientes):
-                os.remove(self.archivo_pendientes)
-            
-            messagebox.showinfo("Éxito", "Día guardado correctamente en el histórico.")
-            self.destroy() # Esto cierra la ventana del programa
-
-        except PermissionError:
-            messagebox.showerror("Archivo Abierto", 
-                "No se pudo guardar. Por favor, CIERRA el archivo 'historico_ventas.xlsx' e intenta de nuevo.")
-        except Exception as e:
-            messagebox.showerror("Error Inesperado", f"Ocurrió un error al guardar: {e}")
+            if os.path.exists(self.archivo_pendientes): os.remove(self.archivo_pendientes)
+            messagebox.showinfo("Éxito", "Día guardado.")
+            self.destroy()
+        except PermissionError: messagebox.showerror("Error", "CIERRA el Excel 'historico_ventas.xlsx' antes de guardar.")
+        except Exception as e: messagebox.showerror("Error", f"Fallo al guardar: {e}")
 
 if __name__ == "__main__":
     AppControlViajes().mainloop()
