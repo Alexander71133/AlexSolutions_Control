@@ -10,6 +10,27 @@ from fpdf import FPDF
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+# Clase personalizada de PDF con encabezado repetido
+class PDFConEncabezado(FPDF):
+    def header(self):
+        # Encabezado de título solo en la primera página
+        if self.page_no() == 1:
+            self.set_font("Arial", 'B', 16)
+            self.set_fill_color(30, 144, 255)  # Azul
+            self.set_text_color(255, 255, 255)  # Texto blanco
+            self.cell(270, 12, 'Inventario de Salida - Ferreteria Emmanuel', 
+                      ln=True, align='C', fill=True, border=1)
+            self.set_text_color(0, 0, 0)  # Volver al texto negro
+            self.ln(5)
+        
+        # Encabezados de tabla que se repiten en cada página
+        self.set_font("Arial", 'B', 12)
+        self.set_fill_color(200, 220, 255)
+        self.cell(150, 10, "Producto", 1, 0, 'L', True)
+        self.cell(50, 10, "Cantidad", 1, 0, 'C', True)
+        self.cell(60, 10, "Precio Unit.", 1, 1, 'R', True)
+        self.set_font("Arial", "", 11)
+
 class AppControlViajes(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -70,7 +91,7 @@ class AppControlViajes(ctk.CTk):
                     self.cargar_datos_pendientes()
                     self.pantalla_registro()
                 else:
-                    if messagebox.askyesno("Confirmar", "¿Borrar viaje actual?"):
+                    if messagebox.askyesno("⚠️ Confirmar Borrado", "¿Estás SEGURO?\n\nSe ELIMINARÁN todos los datos del viaje actual.\nEsta acción NO se puede deshacer."):
                         os.remove(self.archivo_pendientes)
                         self.pantalla_registro()
                     else: self.verificar_estado_inicial()
@@ -176,19 +197,8 @@ class AppControlViajes(ctk.CTk):
         with open(self.archivo_pendientes, "w", encoding="utf-8") as f:
             json.dump(items_ordenados, f)
             
-        pdf = FPDF(orientation='L')  # Landscape
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(270, 10, 'Inventario de Salida - Ferretria Emmanuel', ln=True, align='C')
-        pdf.ln(5)
-        
-        # Encabezados
-        pdf.set_font("Arial", 'B', 12)
-        pdf.set_fill_color(200, 220, 255)
-        pdf.cell(150, 10, "Producto", 1, 0, 'L', True)
-        pdf.cell(50, 10, "Cantidad", 1, 0, 'C', True)
-        pdf.cell(60, 10, "Precio Unit.", 1, 1, 'R', True)
-        pdf.set_font("Arial", "", 11)
+        pdf = PDFConEncabezado(orientation='L')  # Landscape - Usa clase personalizada
+        pdf.add_page()  # El header() se ejecuta automáticamente
         
         # Datos de productos
         for item in items_ordenados:
