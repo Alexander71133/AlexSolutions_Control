@@ -124,6 +124,9 @@ class AppControlViajes(ctk.CTk):
         ctk.CTkButton(form, text="AÑADIR PRODUCTO", fg_color="#2fa572", command=self.agregar_item).pack(pady=20)
         ctk.CTkButton(form, text="GUARDAR Y PDF", fg_color="#e5aa45", text_color="black", command=self.guardar_y_pdf).pack(pady=5)
 
+        self.label_total = ctk.CTkLabel(form, text="Monto de Salida: $0", font=("Roboto", 18, "bold"))
+        self.label_total.pack(pady=10)
+
         self.scroll_view = ctk.CTkScrollableFrame(content, label_text="Resumen de Carga")
         self.scroll_view.pack(side="right", padx=20, pady=20, fill="both", expand=True)
         if self.carga_actual: self.renderizar_lista_salida()
@@ -155,6 +158,10 @@ class AppControlViajes(ctk.CTk):
             f.pack(fill="x", pady=2, padx=5)
             ctk.CTkLabel(f, text=f"{n} | {d['Cant_Inicial']} un.", anchor="w").pack(side="left", padx=10)
             ctk.CTkButton(f, text="X", width=40, fg_color="#c0392b", command=lambda x=n: self.borrar_item(x)).pack(side="right", padx=5)
+        
+        # Calcular y actualizar el monto total
+        total = sum(d['Precio_Unit'] * d['Cant_Inicial'] for d in self.carga_actual.values())
+        self.label_total.configure(text=f"Monto de Salida: ${total:,.0f}")
 
     def borrar_item(self, n):
         del self.carga_actual[n]
@@ -164,28 +171,43 @@ class AppControlViajes(ctk.CTk):
         if not self.carga_actual: return
         
         # 1. ORDENAR LOS DATOS ALFABÉTICAMENTE
-        # Creamos una lista ordenada por el nombre del producto antes de generar el PDF
         items_ordenados = sorted(self.carga_actual.values(), key=lambda x: x['Producto'])
         
         with open(self.archivo_pendientes, "w", encoding="utf-8") as f:
             json.dump(items_ordenados, f)
             
-        pdf = FPDF()
+        pdf = FPDF(orientation='L')  # Landscape
         pdf.add_page()
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, 'Inventario de Salida - AlxSolutions', ln=True, align='C')
-        pdf.ln(10)
+        pdf.cell(270, 10, 'Inventario de Salida - Ferretria Emmanuel', ln=True, align='C')
+        pdf.ln(5)
+        
+        # Encabezados
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(100, 10, "Producto", 1)
-        pdf.cell(40, 10, "Cant.", 1)
-        pdf.cell(40, 10, "Precio", 1, ln=True)
+        pdf.set_fill_color(200, 220, 255)
+        pdf.cell(150, 10, "Producto", 1, 0, 'L', True)
+        pdf.cell(50, 10, "Cantidad", 1, 0, 'C', True)
+        pdf.cell(60, 10, "Precio Unit.", 1, 1, 'R', True)
         pdf.set_font("Arial", "", 11)
         
-        # 2. USAR LA LISTA ORDENADA PARA EL BUCLE
+        # Datos de productos
         for item in items_ordenados:
-            pdf.cell(100, 10, item['Producto'][:40], 1)
-            pdf.cell(40, 10, str(item['Cant_Inicial']), 1)
-            pdf.cell(40, 10, f"{item['Precio_Unit']:,.0f}", 1, ln=True)
+            producto = item['Producto'][:80]  # Limitar a 80 caracteres
+            cantidad = str(item['Cant_Inicial'])
+            precio = f"${item['Precio_Unit']:,.0f}"
+            
+            pdf.cell(150, 8, producto, 1, 0, 'L')
+            pdf.cell(50, 8, cantidad, 1, 0, 'C')
+            pdf.cell(60, 8, precio, 1, 1, 'R')
+        
+        # Total
+        total = sum(d['Precio_Unit'] * d['Cant_Inicial'] for d in self.carga_actual.values())
+        pdf.ln(2)
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(150, 10, "MONTO TOTAL:", 0, 0, 'R')
+        pdf.set_font("Arial", 'B', 13)
+        pdf.cell(50, 10, "", 0, 0)
+        pdf.cell(60, 10, f"${total:,.0f}", 0, 1, 'R')
             
         n_pdf = os.path.join(self.folder_reportes, f"Salida_{datetime.now().strftime('%H%M%S')}.pdf")
         pdf.output(n_pdf)
