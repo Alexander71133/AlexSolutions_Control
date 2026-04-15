@@ -15,11 +15,12 @@ class PDFConEncabezado(FPDF):
     def header(self):
         # Encabezado de título solo en la primera página
         if self.page_no() == 1:
-            self.set_font("Arial", 'B', 16)
+            fecha = datetime.now().strftime('%d/%m/%Y')
+            self.set_font("Arial", '', 10)
             self.set_fill_color(30, 144, 255)  # Azul
             self.set_text_color(255, 255, 255)  # Texto blanco
-            self.cell(270, 12, 'Inventario de Salida - Ferreteria Emmanuel', 
-                      ln=True, align='C', fill=True, border=1)
+            self.cell(270, 8, f"Fecha de Viaje: {fecha}", 1, 1, 'C', True)
+            self.cell(270, 12, 'Inventario de Salida - Ferreteria Emmanuel', 1, 1, 'C', True)
             self.set_text_color(0, 0, 0)  # Volver al texto negro
             self.ln(5)
         
@@ -47,7 +48,8 @@ class AppControlViajes(ctk.CTk):
 
         self.dict_productos = self.cargar_productos_con_precios()
         self.lista_nombres = list(self.dict_productos.keys())
-        self.carga_actual = {} 
+        self.carga_actual = {}
+        self.editando_producto = None
         
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame.pack(pady=20, padx=20, fill="both", expand=True)
@@ -132,6 +134,12 @@ class AppControlViajes(ctk.CTk):
         self.combo_prod.pack(pady=10)
         self.combo_prod.bind("<KeyRelease>", self.filtrar_productos)
         self.combo_prod.bind("<MouseWheel>", self._scroll_combo)
+        self.combo_prod._entry.bind("<MouseWheel>", self._scroll_combo)
+        self.combo_prod._dropdown_menu.bind("<MouseWheel>", self._scroll_combo)
+        self.combo_prod._entry.bind("<Button-4>", self._scroll_combo)
+        self.combo_prod._entry.bind("<Button-5>", self._scroll_combo)
+        self.combo_prod._dropdown_menu.bind("<Button-4>", self._scroll_combo)
+        self.combo_prod._dropdown_menu.bind("<Button-5>", self._scroll_combo)
 
         ctk.CTkLabel(form, text="Precio:").pack()
         self.ent_pre = ctk.CTkEntry(form, width=280)
@@ -142,7 +150,11 @@ class AppControlViajes(ctk.CTk):
         self.ent_can.pack(pady=10)
         self.ent_can.bind("<Return>", lambda e: self.agregar_item())
 
-        ctk.CTkButton(form, text="AÑADIR PRODUCTO", fg_color="#2fa572", command=self.agregar_item).pack(pady=20)
+        self.btn_add = ctk.CTkButton(form, text="AÑADIR PRODUCTO", fg_color="#2fa572", command=self.agregar_item)
+        self.btn_add.pack(pady=20)
+        self.btn_cancel = ctk.CTkButton(form, text="CANCELAR EDICIÓN", fg_color="#7f8c8d", command=self.cancelar_edicion)
+        self.btn_cancel.pack(pady=5)
+        self.btn_cancel.pack_forget()
         ctk.CTkButton(form, text="GUARDAR Y PDF", fg_color="#e5aa45", text_color="black", command=self.guardar_y_pdf).pack(pady=5)
 
         self.label_total = ctk.CTkLabel(form, text="Monto de Salida: $0", font=("Roboto", 18, "bold"))
@@ -157,8 +169,20 @@ class AppControlViajes(ctk.CTk):
         opciones = self.combo_prod.cget("values")
         if not opciones: return
         idx = opciones.index(self.combo_prod.get()) if self.combo_prod.get() in opciones else 0
-        if event.delta > 0: nuevo = max(0, idx - 1)
-        else: nuevo = min(len(opciones) - 1, idx + 1)
+        if hasattr(event, 'delta'):
+            if event.delta > 0:
+                nuevo = max(0, idx - 1)
+            else:
+                nuevo = min(len(opciones) - 1, idx + 1)
+        elif hasattr(event, 'num'):
+            if event.num == 4:
+                nuevo = max(0, idx - 1)
+            elif event.num == 5:
+                nuevo = min(len(opciones) - 1, idx + 1)
+            else:
+                return
+        else:
+            return
         self.combo_prod.set(opciones[nuevo])
 
     def agregar_item(self):
@@ -167,10 +191,19 @@ class AppControlViajes(ctk.CTk):
             pr = float(self.ent_pre.get())
             c = int(self.ent_can.get())
             if p == "": return
+            if self.editando_producto:
+                original = self.editando_producto
+                if p != original and original in self.carga_actual:
+                    del self.carga_actual[original]
+                self.editando_producto = None
+                self.btn_add.configure(text="AÑADIR PRODUCTO")
+                self.btn_cancel.pack_forget()
+
             self.carga_actual[p] = {"Producto": p, "Precio_Unit": pr, "Cant_Inicial": c, "Liquidado": False, "Fecha": datetime.now().strftime("%Y-%m-%d")}
             self.renderizar_lista_salida()
             self.ent_can.delete(0, 'end'); self.combo_prod.set(""); self.combo_prod.focus()
-        except: messagebox.showerror("Error", "Datos inválidos")
+        except:
+            messagebox.showerror("Error", "Datos inválidos")
 
     def renderizar_lista_salida(self):
         for w in self.scroll_view.winfo_children(): w.destroy()
@@ -178,15 +211,37 @@ class AppControlViajes(ctk.CTk):
             f = ctk.CTkFrame(self.scroll_view, fg_color="#2b2b2b")
             f.pack(fill="x", pady=2, padx=5)
             ctk.CTkLabel(f, text=f"{n} | {d['Cant_Inicial']} un.", anchor="w").pack(side="left", padx=10)
+            ctk.CTkButton(f, text="Editar", width=80, fg_color="#2980b9", command=lambda x=n: self.editar_item(x)).pack(side="right", padx=5)
             ctk.CTkButton(f, text="X", width=40, fg_color="#c0392b", command=lambda x=n: self.borrar_item(x)).pack(side="right", padx=5)
+            ctk.CTkFrame(self.scroll_view, height=2, fg_color="#FFFFFF", corner_radius=0).pack(fill="x", padx=5, pady=(0,2))
         
         # Calcular y actualizar el monto total
         total = sum(d['Precio_Unit'] * d['Cant_Inicial'] for d in self.carga_actual.values())
         self.label_total.configure(text=f"Monto de Salida: ${total:,.0f}")
 
     def borrar_item(self, n):
+        if self.editando_producto == n:
+            self.cancelar_edicion()
         del self.carga_actual[n]
         self.renderizar_lista_salida()
+
+    def editar_item(self, n):
+        d = self.carga_actual[n]
+        self.editando_producto = n
+        self.combo_prod.set(n)
+        self.ent_pre.delete(0, 'end'); self.ent_pre.insert(0, f"{d['Precio_Unit']:.0f}")
+        self.ent_can.delete(0, 'end'); self.ent_can.insert(0, str(d['Cant_Inicial']))
+        self.btn_add.configure(text="ACTUALIZAR PRODUCTO")
+        self.btn_cancel.pack(pady=5)
+        self.combo_prod.focus()
+
+    def cancelar_edicion(self):
+        self.editando_producto = None
+        self.btn_add.configure(text="AÑADIR PRODUCTO")
+        self.btn_cancel.pack_forget()
+        self.combo_prod.set("")
+        self.ent_pre.delete(0, 'end')
+        self.ent_can.delete(0, 'end')
 
     def guardar_y_pdf(self):
         if not self.carga_actual: return
